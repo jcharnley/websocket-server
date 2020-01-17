@@ -11,9 +11,8 @@ var connections = [];
 
 wss.on("connection", function connection(ws, req) {
   id = req.headers["sec-websocket-key"];
-  connections.push({ wsId: id, username: '' });
+  connections.push({ wsId: id, username: "" });
   // send live connection count to client
-
   wss.clients.forEach(function each(client) {
     if (client.readyState === WebSocket.OPEN) {
       connectionsCount = wss.clients.size;
@@ -21,17 +20,25 @@ wss.on("connection", function connection(ws, req) {
     }
   });
 
-  ws.on("open", function open() {
-  });
+  ws.on("open", function open() {});
 
   ws.on("message", function incoming(data) {
-    
     deconstructData = JSON.parse(data);
-  // collect message history to send over get("/") request on componentDidMount
-    const { name, message, timeStamp, username } = deconstructData;
-  // collect users online
+    // collect message history to send over get("/") request on componentDidMount
+    const { name, message, timeStamp, clear } = deconstructData;
+
+    // collect users online
     // connections[connectionsCount-1]['username'] = username;
-  // collect previous history
+
+    // collect previous history
+    if (clear === true) {
+      previousHistory = [];
+      wss.clients.forEach(function each(client) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send("true");
+        }
+      });
+    }
     previousHistory.push({
       name: name,
       message: message,
@@ -47,12 +54,12 @@ wss.on("connection", function connection(ws, req) {
   });
 
   ws.on("close", function close() {
---connectionsCount;
-wss.clients.forEach(function each(client) {
-  if (client.readyState === WebSocket.OPEN) {
-    client.send(connectionsCount);
-  }
-});
+    --connectionsCount;
+    wss.clients.forEach(function each(client) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(connectionsCount);
+      }
+    });
   });
 
   router.get("/", function(req, res) {
