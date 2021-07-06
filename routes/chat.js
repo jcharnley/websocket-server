@@ -7,7 +7,7 @@ wss = new WebSocket.Server({ port: 8090, clientTracking: true });
 
 let msgHistory = [];
 let connections = [];
-let remotePeerId;
+let privateRoomMsg = [];
 let fromClient;
 let toClient;
 
@@ -17,110 +17,104 @@ wss.on('connection', (ws, req) => {
 
 	ws.on('message', async (data) => {
 		const message = JSON.parse(data);
-		console.log('data', message.type);
+		console.log('message', message);
 
-		if (message.type === 'set_username') {
-			const { setName } = message;
-			connections.push({ id: ws.id, username: setName });
+		switch (message.type) {
+			case 'set_username':
+				const { setName } = message;
+				ws.username = setName;
+				connections.push({ id: ws.id, username: setName });
 
-			wss.clients.forEach(function each(client) {
-				if (client.readyState === WebSocket.OPEN) {
-					client.send(JSON.stringify({ type: 'connections', connections: connections }));
+				wss.clients.forEach(function each(client) {
+					if (client.readyState === WebSocket.OPEN) {
+						client.send(JSON.stringify({ type: 'connections', connections: connections }));
+					}
+				});
+				break;
+			case 'message':
+				msgHistory.push({
+					type: 'history',
+					name: message.name,
+					message: message.message,
+					timeStamp: message.timeStamp,
+				});
+				wss.clients.forEach(function each(client) {
+					if (client.readyState === WebSocket.OPEN) {
+						client.send(JSON.stringify(message));
+					}
+				});
+				break;
+			case 'private_messages_start':
+				let privateRoomID = util.uuidc();
+
+				fromClient = await findClientById(ws.id);
+				toClient = await findClientById(message.targetId);
+
+				privateRoomMsg.push({
+					type: 'private_room_created',
+					targetId: message.targetId,
+					privateRoomID: privateRoomID,
+					privateRoomActive: message.privateRoomActive,
+					privateConnnections: [fromClient, toClient],
+					fromClient: fromClient.id,
+					toClient: toClient.id,
+					messages: [],
+				});
+
+				toClient.send(
+					JSON.stringify({
+						id: message.id,
+						type: 'private_room_created',
+						fromClient: fromClient.id,
+						toClient: toClient.id,
+						targetId: message.targetId,
+						targetName: fromClient.username,
+						privateRoomActive: message.privateRoomActive,
+						privateRoomID: privateRoomID,
+					})
+				);
+
+				fromClient.send(
+					JSON.stringify({
+						id: message.id,
+						type: 'private_room_created',
+						fromClient: fromClient.id,
+						toClient: toClient.id,
+						targetId: ws.id,
+						targetName: message.targetName,
+						privateRoomActive: message.privateRoomActive,
+						privateRoomID: privateRoomID,
+					})
+				);
+				break;
+			case 'private_message_room':
+				const privateRoomFound = privateRoomMsg.find((obj) => {
+					if (obj.privateRoomID === message.privateRoomID) {
+						return obj;
+					}
+				});
+
+				if (privateRoomFound) {
+					privateRoomFound.messages.push({
+						id: message.id,
+						name: message.name,
+						message: message.message,
+						timeStamp: message.timeStamp,
+					});
 				}
-			});
-		} else if (message.type === 'message') {
-			msgHistory.push({
-				type: 'history',
-				name: message.name,
-				message: message.message,
-				timeStamp: message.timeStamp,
-			});
-			wss.clients.forEach(function each(client) {
-				if (client.readyState === WebSocket.OPEN) {
-					client.send(JSON.stringify(message));
-				}
-			});
-		} else if (message.type === 'private_message') {
-			fromClient = await findClientById(ws.id);
-			toClient = await findClientById(message.targetId);
 
-			toClient.send(
-				JSON.stringify({
-					type: 'private_message',
-					fromClient: fromClient.id,
-					toClient: toClient.id,
-				})
-			);
+				privateRoomFound.privateConnnections.forEach(function each(client) {
+					if (client.readyState === WebSocket.OPEN) {
+						client.send(
+							JSON.stringify({
+								type: 'private_message_room',
+								privateRoomMsg: privateRoomFound.messages,
+							})
+						);
+					}
+				});
+				break;
 		}
-		// else if (message.type === 'createPeerConnection') {
-		// 	console.log("createPeerConnection", message)
-		// 	fromClient = await findClientById(ws.id);
-		// 	toClient = await findClientById(message.toClient);
-
-		// 	toClient.send(
-		// 		JSON.stringify({
-		// 			type: 'createPeerConnection',
-		// 			fromClient: fromClient.id,
-		// 			toClient: toClient.id,
-		// 		})
-		// 	);
-		// }
-		// else if (message.type === 'triggerLocalStream') {
-		// 	console.log("triggerLocalStream", message)
-		// 	fromClient = await findClientById(ws.id);
-		// 	toClient = await findClientById(message.toClient);
-
-		// 	toClient.send(
-		// 		JSON.stringify({
-		// 			type: 'acceptLocalStream',
-		// 			fromClient: fromClient.id,
-		// 			toClient: toClient.id,
-		// 		})
-		// 	);
-		// }
-		else if (message.type === 'offer') {
-			console.log('offer', message);
-			fromClient = await findClientById(ws.id);
-			toClient = await findClientById(message.toClient);
-			remotePeerId = message.toClient;
-			
-			toClient.send(
-				JSON.stringify({
-					type: 'offer',
-					offer: message,
-					fromClient: fromClient.id,
-					toClient: toClient.id,
-				})
-			);
-		} else if (message.type === 'answer') {
-			console.log('answer', message);
-			fromClient = await findClientById(ws.id);
-			toClient = await findClientById(message.fromClient);
-
-			toClient.send(
-				JSON.stringify({
-					type: 'answer',
-					answer: message.answer,
-					fromClient: fromClient.id,
-					toClient: toClient.id,
-				})
-			);
-		} else if (message.type === 'candidate') {
-			console.log('canidate received', message.candidate);
-			fromClient = await findClientById(ws.id);
-			toClient = await findClientById(message.toClient);
-			// console.log('remotePeerId', remotePeerId);
-			toClient.send(
-				JSON.stringify({
-					type: 'candidate',
-					candidate: message.candidate,
-					fromClient: fromClient.id,
-					toClient: remotePeerId,
-				})
-			);
-		}
-
-		// broadcast messages to all users
 	});
 
 	ws.on('close', (ws, req) => {
