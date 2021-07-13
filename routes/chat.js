@@ -16,8 +16,9 @@ wss.on('connection', (ws, req) => {
 	ws.id = util.uuidc();
 
 	ws.on('message', async (data) => {
+		console.log("data",data)
 		const message = JSON.parse(data);
-		console.log('message', message);
+	
 
 		switch (message.type) {
 			case 'set_username':
