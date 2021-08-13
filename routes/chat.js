@@ -46,6 +46,12 @@ wss.on('connection', (ws, req) => {
 				});
 				break;
 			case 'private_messages_start':
+
+			console.log("privateRoomMsg",privateRoomMsg)
+// if it alreadys exisits then dont add to roomlist
+			if (privateRoomMsg.find()) {
+
+			}
 				let privateRoomID = util.uuidc();
 
 				fromClient = await findClientById(ws.id);
@@ -101,6 +107,7 @@ wss.on('connection', (ws, req) => {
 						name: message.name,
 						message: message.message,
 						timeStamp: message.timeStamp,
+						privateRoomID: message.privateRoomID,
 					});
 				}
 
